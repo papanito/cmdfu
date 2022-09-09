@@ -7,6 +7,7 @@
 # Usage: `cmdlfu -t -d <search_string>``
 #     -d display full context, no selection
 #     -t show text file instead json
+#     -r displays random commands in json, or as text using -t
 #
 # Below you see the internal functions used, they can also be called separately. However the script actually presents the found commands in a searchable list using fzf.
 set -eo pipefail
@@ -33,9 +34,10 @@ usage() {
    cat <<END
 Queries https://commandlinefu.com and presents the user with a list from which she can select a command. Alternatively one can display/download the content to a file.
 
-Usage: $0 -t -d
+Usage: $0 -tdr <search_string>
      -d display full context, no selection
      -t show text file instead json
+     -r displays random commands in json, or as text using -t
 END
 }
 
@@ -79,7 +81,7 @@ baseurl="https://www.commandlinefu.com/commands/"
 
 # @description Search commandlinefu.com from the command line using the API and returns text output
 # @arg $1 string text to search
-function cmdfu() { 
+function cmdfut() { 
    curl -s "$baseurl/matching/$@/$(echo -n $@ | openssl base64)/plaintext"; 
 }
 
@@ -106,10 +108,16 @@ function fuman() {
    lynx -width=$COLUMNS -nonumbers -dump "$basurl/using/$1" |sed '/Add to favourites/,/This is sample output/!d' |sed 's/ *Add to favourites/----/' |less -r; 
 }
 
-# @description Random Commandlinefu command
+# @description Random Commandlinefu command as textfile
 # @noargs
-function fur() { 
+function cmdfurt() { 
    curl -sL "$baseurl/random/plaintext" | grep -v "^# commandlinefu" ; 
+}
+
+# @description Random Commandlinefu command as jsodn file
+# @noargs
+function cmdfurj() { 
+   curl -sL "$baseurl/random/json" | grep -v "^# commandlinefu" ; 
 }
 
 # Prepare a commandlinefu command
@@ -121,18 +129,23 @@ function goclf()
 ### Custom Functions - end
 dflag="0"
 tflag="0"
+rflag="0"
 
 ### Check for required tools
 need "jq"
 need "fzf"
 
 ### Read arguments
-parsed_options=$(getopt -n "$0" -o hdt -- "$@")
+parsed_options=$(getopt -n "$0" -o hdrt -- "$@")
 eval "set -- $parsed_options"
 while [ "$#" -gt 0 ]; do
       case $1 in
          (-d)
             dflag="1"
+            shift
+         ;;
+         (-r)
+            rflag="1"
             shift
          ;;
          (-t)
@@ -155,11 +168,24 @@ if [ ! -d $TARGET_FOLDER ]; then
    mkdir $TARGET_FOLDER
 fi
 
-if [ "$dflag" = "1" ] || [ "$tflag" = "1" ] ; then
-   cmdfu $*
+if [ "$rflag" == "1" ] ; then
+   if [ "$tflag" == "1" ]; then
+      filename="$TARGET_FOLDER/cmdfu_random.txt"
+      cmdfurt > $filename
+   else
+      filename="$TARGET_FOLDER/cmdfu_random.json"
+      cmdfurj > $filename
+   fi
+elif [ "$tflag" == "1" ] ; then
+   filename="$TARGET_FOLDER/$*.txt"
+   cmdfut $* > $filename
 else
    filename="$TARGET_FOLDER/$*.json"
-   echo $filename
    cmdfuj $* > $filename
+fi
+
+if [ "$dflag" == "1" ] || [ "$tflag" == "1" ]; then
+   cat $filename
+else
    jq -r '.[] | .summary +"\t"+  .command ' "$filename" | fzf -d $'\t' --nth=1 --with-nth=1 --preview "echo {2}" --preview-window=down | cut -d$'\t' -f2
 fi

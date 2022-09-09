@@ -9,17 +9,19 @@ Queries https://commandlinefu.com and presents the user with a list from which s
 Usage: `cmdlfu -t -d <search_string>``
 -d display full context, no selection
 -t show text file instead json
+-r displays random commands in json, or as text using -t
 
 Below you see the internal functions used, they can also be called separately. However the script actually presents the found commands in a searchable list using fzf.
 
 ## Index
 
-* [cmdfu](#cmdfu)
+* [cmdfut](#cmdfut)
 * [cmdfuj](#cmdfuj)
 * [fuman](#fuman)
-* [fur](#fur)
+* [cmdfurt](#cmdfurt)
+* [cmdfurj](#cmdfurj)
 
-### cmdfu
+### cmdfut
 
 Search commandlinefu.com from the command line using the API and returns text output
 
@@ -43,9 +45,15 @@ fuman, an alternative to the 'man' command that shows commandlinefu.com examples
 
 * **$1** (string): command
 
-### fur
+### cmdfurt
 
-Random Commandlinefu command
+Random Commandlinefu command as textfile
+
+_Function has no arguments._
+
+### cmdfurj
+
+Random Commandlinefu command as jsodn file
 
 _Function has no arguments._
 
