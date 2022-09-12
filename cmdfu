@@ -4,10 +4,12 @@
 # @description
 # Queries https://commandlinefu.com and presents the user with a list from which she can select a command. Alternatively one can display/download the content to a file.
 #
-# Usage: `cmdlfu -t -d <search_string>``
-#     -d display full context, no selection
-#     -t show text file instead json
-#     -r displays random commands in json, or as text using -t
+# Usage: `cmdlfu -t -d <search_string>`
+#
+#    * -d display full context, no selection
+#    * -p show text file instead json
+#    * -t show results tagged with <search_string>
+#    * -r displays random commands in json, or as text using -t
 #
 # Below you see the internal functions used, they can also be called separately. However the script actually presents the found commands in a searchable list using fzf.
 set -eo pipefail
@@ -36,7 +38,7 @@ Queries https://commandlinefu.com and presents the user with a list from which s
 
 Usage: $0 -tdr <search_string>
      -d display full context, no selection
-     -t show text file instead json
+     -p show plaintext file instead json
      -r displays random commands in json, or as text using -t
 END
 }
@@ -75,49 +77,47 @@ need() {
 }
 
 ### Main Functions - end
-
-### Custom Functions - start
 baseurl="https://www.commandlinefu.com/commands/"
 
-# @description Search commandlinefu.com from the command line using the API and returns text output
-# @arg $1 string text to search
-function cmdfut() { 
-   curl -s "$baseurl/matching/$@/$(echo -n $@ | openssl base64)/plaintext"; 
+### Custom Functions - start
+# @description get random command
+# @internal
+# @noargs
+cmdfu_random() {
+   if [ "$pflag" == "1" ]; then
+      curl -sL "$baseurl/random/plaintext" | grep -v "^# commandlinefu"
+   else
+      curl -sL "$baseurl/random/json" | grep -v "^# commandlinefu"
+   fi
 }
 
-# @description Search commandlinefu.com from the command line using the API and returns json output
-# @arg $1 string text to search
-function cmdfuj() { 
-   curl -s "$baseurl/matching/$@/$(echo -n $@ | openssl base64)/json" ; 
+# @description get commands tagged with given string
+# @internal
+# @arg $@ string tag to search for
+cmdfu_tag() {
+   if [ "$pflag" == "1" ]; then
+      curl -s "$baseurl/tagged/163/$@/plaintext"
+   else
+      curl -s "$baseurl/tagged/163/$@/json"
+   fi
 }
 
-# @description automatically downloads all commands from http://www.commandlinefu.com into a single text file
-# @ noargs
-alias cmdfu_dl='mkdir /tmp/commandlinefu && cd /tmp/commandlinefu && curl -O http://www.commandlinefu.com/commands/browse/sort-by-votes/plaintext/[0-2400:25] && ls -1 | sort -n | while read mork ; do cat $mork >> commandlinefu.txt ; ls -ald $mork; done && mv commandlinefu.txt $HOME && rm -rf /tmp/commandlinefu'
+# @description get commands with given string
+# @internal
+# @arg $@ string string to search for
+cmdfu_search() {
+   if [ "$pflag" == "1" ]; then
+      curl -s "$baseurl/matching/$search_string/$(echo -n $search_string | openssl base64)/plaintext" > $filename
+   else
+      curl -s "$baseurl/matching/$search_string/$(echo -n $search_string | openssl base64)/json" > $filename
+   fi
+}
 
 # @description find a CommandlineFu users average command rating
 # @arg $1 string username of user
 function cmdfu_rating()
 {
    curl -s "$baseurl/by/$1" | awk -F\> '/class="num-votes"/{S+=$2; I++}END{print S/I}'
-}
-
-# @description fuman, an alternative to the 'man' command that shows commandlinefu.com examples
-# @arg $1 string command
-function fuman() {
-   lynx -width=$COLUMNS -nonumbers -dump "$basurl/using/$1" |sed '/Add to favourites/,/This is sample output/!d' |sed 's/ *Add to favourites/----/' |less -r; 
-}
-
-# @description Random Commandlinefu command as textfile
-# @noargs
-function cmdfurt() { 
-   curl -sL "$baseurl/random/plaintext" | grep -v "^# commandlinefu" ; 
-}
-
-# @description Random Commandlinefu command as jsodn file
-# @noargs
-function cmdfurj() { 
-   curl -sL "$baseurl/random/json" | grep -v "^# commandlinefu" ; 
 }
 
 # Prepare a commandlinefu command
@@ -129,6 +129,7 @@ function goclf()
 ### Custom Functions - end
 dflag="0"
 tflag="0"
+pflag="0"
 rflag="0"
 
 ### Check for required tools
@@ -136,7 +137,7 @@ need "jq"
 need "fzf"
 
 ### Read arguments
-parsed_options=$(getopt -n "$0" -o hdrt -- "$@")
+parsed_options=$(getopt -n "$0" -o hdrpt -- "$@")
 eval "set -- $parsed_options"
 while [ "$#" -gt 0 ]; do
       case $1 in
@@ -146,6 +147,10 @@ while [ "$#" -gt 0 ]; do
          ;;
          (-r)
             rflag="1"
+            shift
+         ;;
+         (-p)
+            pflag="1"
             shift
          ;;
          (-t)
@@ -168,23 +173,33 @@ if [ ! -d $TARGET_FOLDER ]; then
    mkdir $TARGET_FOLDER
 fi
 
-if [ "$rflag" == "1" ] ; then
-   if [ "$tflag" == "1" ]; then
+search_string=$*
+
+if [ "$rflag" == "1" ]; then
+   if [ "$pflag" == "1" ]; then
       filename="$TARGET_FOLDER/cmdfu_random.txt"
-      cmdfurt > $filename
+      cmdfu_random > $filename
    else
       filename="$TARGET_FOLDER/cmdfu_random.json"
-      cmdfurj > $filename
+      cmdfu_random > $filename
    fi
-elif [ "$tflag" == "1" ] ; then
-   filename="$TARGET_FOLDER/$*.txt"
-   cmdfut $* > $filename
+elif [ "$tflag" == "1" ]; then
+   if [ "$pflag" == "1" ] ; then
+      filename="$TARGET_FOLDER/tag_$search_string.txt"
+      cmdfu_tag $search_string > $filename
+   else
+      filename="$TARGET_FOLDER/tag_$search_string.json"
+      cmdfu_tag $search_string > $filename
+   fi
+elif [ "$pflag" == "1" ] ; then
+   filename="$TARGET_FOLDER/$search_string.txt"
+   cmdfu_search $search_string > $filename
 else
-   filename="$TARGET_FOLDER/$*.json"
-   cmdfuj $* > $filename
+   filename="$TARGET_FOLDER/$search_string.json"
+   cmdfu_search $search_string > $filename
 fi
 
-if [ "$dflag" == "1" ] || [ "$tflag" == "1" ]; then
+if [ "$dflag" == "1" ] || [ "$pflag" == "1" ]; then
    cat $filename
 else
    jq -r '.[] | .summary +"\t"+  .command ' "$filename" | fzf -d $'\t' --nth=1 --with-nth=1 --preview "echo {2}" --preview-window=down | cut -d$'\t' -f2
